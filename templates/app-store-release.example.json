@@ -1,0 +1,30 @@
+{
+  "platform": "ios",
+  "app_identifier": "com.example.app",
+  "team_id": "ABCDE12345",
+  "branch": "main",
+  "runner": "macos-15",
+  "version": {
+    "kind": "build-setting",
+    "file": "App.xcodeproj/project.pbxproj"
+  },
+  "archive": {
+    "project": "App.xcodeproj",
+    "workspace": "",
+    "scheme": "App",
+    "command": "",
+    "path": "build/app-store/App.xcarchive"
+  },
+  "ci": {
+    "setup": ""
+  },
+  "screenshots": {
+    "scenes": [
+      { "id": "home", "label": "홈" },
+      { "id": "detail", "label": "상세" }
+    ],
+    "capture": "",
+    "compose": "",
+    "composer": "codex"
+  }
+}

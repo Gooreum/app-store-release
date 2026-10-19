@@ -1,0 +1,112 @@
+# __BRANCH__에 릴리스 커밋이 오면 App Store Connect에 올린다. 심사 제출은 사람이 한다.
+#
+# 릴리스 커밋은 app-store-release 스킬이 만든다 (https://github.com/Gooreum/app-store-release).
+# 일반 머지는 아래 경로를 건드리지 않으므로 이 워크플로가 돌지 않는다.
+#
+#   빌드 번호가 바뀜          → 아카이브 → 업로드 → 태그 v<버전>-<빌드>
+#   fastlane/metadata 바뀜    → 앱 정보 반영
+#   fastlane/screenshots 바뀜 → 스크린샷 교체
+#
+# 시크릿: ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8(.p8 파일을 base64로). 키 권한은 Admin이어야
+# 한다 — CI에는 Xcode 계정이 없어 그 키로 배포 인증서·프로파일을 받는다.
+name: App Store
+
+on:
+  push:
+    branches: [__BRANCH__]
+    paths:
+      - __VERSION_FILE__
+      - fastlane/metadata/**
+      - fastlane/screenshots/**
+  workflow_dispatch:
+    inputs:
+      build:
+        description: 아카이브·업로드
+        type: boolean
+        default: false
+      dry_run:
+        description: 업로드하지 않고 서명까지만 (build와 함께)
+        type: boolean
+        default: false
+      metadata:
+        description: 앱 정보 반영
+        type: boolean
+        default: false
+      screenshots:
+        description: 스크린샷 교체
+        type: boolean
+        default: false
+
+# 두 릴리스가 동시에 올라가면 번호·앱 정보가 엇갈린다. 앞의 것을 끝까지 둔다.
+concurrency:
+  group: app-store
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: __RUNNER__
+    timeout-minutes: 60
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_PATH: ${{ github.workspace }}/../AuthKey.p8
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: 무엇을 올릴지
+        id: plan
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "${{ github.event_name }}" = workflow_dispatch ]; then
+            bash scripts/app-store/release-diff.sh HEAD HEAD | grep -E '^(version|build_number)='
+            echo "build=${{ inputs.build }}"
+            echo "metadata=${{ inputs.metadata }}"
+            echo "screenshots=${{ inputs.screenshots }}"
+          else
+            # 브랜치를 새로 만든 푸시면 before가 0으로 온다
+            base="$BEFORE"; git cat-file -e "$base^{commit}" 2>/dev/null || base=HEAD~1
+            bash scripts/app-store/release-diff.sh "$base" HEAD
+          fi | tee -a "$GITHUB_OUTPUT"
+
+      - name: API 키
+        if: steps.plan.outputs.build == 'true' || steps.plan.outputs.metadata == 'true' || steps.plan.outputs.screenshots == 'true'
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          [ -n "$ASC_KEY_P8" ] && [ -n "$ASC_KEY_ID" ] && [ -n "$ASC_ISSUER_ID" ] \
+            || { echo "::error::시크릿 ASC_KEY_P8·ASC_KEY_ID·ASC_ISSUER_ID가 필요하다"; exit 1; }
+          echo "$ASC_KEY_P8" | base64 --decode > "$ASC_KEY_PATH"
+          chmod 600 "$ASC_KEY_PATH"
+
+      - name: 아카이브·업로드
+        if: steps.plan.outputs.build == 'true'
+        env:
+          DESTINATION: ${{ inputs.dry_run && 'export' || 'upload' }}
+        run: |
+          xcodebuild -version
+          . scripts/app-store/lib.sh
+          setup=$(cfg ci.setup)
+          [ -z "$setup" ] || bash -c "$setup"
+          bash scripts/app-store/archive-upload.sh
+
+      - name: 앱 정보·스크린샷
+        if: steps.plan.outputs.metadata == 'true' || steps.plan.outputs.screenshots == 'true'
+        run: |
+          command -v fastlane >/dev/null || brew install fastlane
+          fastlane metadata screenshots:${{ steps.plan.outputs.screenshots }} version:${{ steps.plan.outputs.version }}
+
+      - name: 태그
+        if: steps.plan.outputs.build == 'true' && !inputs.dry_run
+        run: |
+          tag="v${{ steps.plan.outputs.version }}-${{ steps.plan.outputs.build_number }}"
+          git tag "$tag" && git push origin "$tag"
+
+      - name: 키 지우기
+        if: always()
+        run: rm -f "$ASC_KEY_PATH"
