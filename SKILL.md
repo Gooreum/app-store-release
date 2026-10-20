@@ -223,11 +223,14 @@ gh run watch "$RUN" --exit-status
 - 빌드 없이 앱 정보만 바꾼 커밋이면 태그는 생기지 않는다. `workflow_dispatch`로 `build=false`로 다시 돌린 뒤에도
   마찬가지라, 빌드가 이미 올라가 있으면 태그를 직접 찍어 올린다: `git tag v<버전>-<빌드> <릴리스 커밋> && git push origin v<버전>-<빌드>`.
   태그가 없으면 다음 릴리스의 `BASE`(마지막 릴리스 기준점)가 어긋난다.
-- **스크린샷 교체가 `Failed to delete screenshot ... APP_DESKTOP` / `Failed verification of all screenshots
-  deleted`로 실패하면**: 이미 올라가 있는 스크린샷을 API로 지우지 못하는 것이다(빌드 업로드는 이미 끝났다).
-  같은 명령을 다시 돌리지 말고 사용자에게 **App Store Connect 웹에서 해당 버전의 기존 스크린샷을 지워 달라**고
-  부탁한다. 지운 뒤 `gh workflow run app-store.yml -f metadata=true -f screenshots=true`로 앱 정보·스크린샷만
-  다시 올린다(빌드는 다시 올리지 않는다).
+- **이전 버전이 심사에 제출돼 있으면(`WAITING_FOR_REVIEW`) 앱 정보·스크린샷 교체가 실패한다**
+  (`Can't Delete Screenshot After Submit for review`). deliver가 제출된 버전을 수정 대상으로 잡아 이름을
+  새 버전으로 바꾸고 스크린샷을 못 지운다. 손으로 지우게 하지 말고, 올리기 전에 상태를 읽는다:
+  Fastfile에 `status`(버전·상태 출력)와 `release_guard`(제출된 버전이 있으면 deliver 전에 멈춤, `cancel_review:true`
+  일 때만 `ReviewSubmission#cancel_submission`으로 철회 후 반영 대기)를 둔다. 릴리스 모드 0단계에서
+  `status`로 읽어 제출된 버전이 있으면 첫 질문 탭에 "심사 중인 X를 철회하고 올릴까요? (심사 순서를 잃어요)"를
+  보기로 둔다. 심사 진행 중(`IN_REVIEW`)이면 철회할 수 없으니 끝나기를 기다린다.
+  구현 예: https://github.com/Gooreum/sweep 의 `fastlane/Fastfile`.
 
 ## 참고
 
