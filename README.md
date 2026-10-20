@@ -48,6 +48,17 @@ PR 머지 → /app-store-release
   → App Store Connect에서 심사 제출 (사람)
 ```
 
+## 알아 두면 좋은 것
+
+- **스크린샷 교체가 `Failed to delete screenshot`으로 실패하면** 이미 올라간 스크린샷을 API로 지우지 못하는
+  것이다. App Store Connect 웹에서 해당 버전의 기존 스크린샷을 지우고, `app-store.yml`을
+  `metadata=true screenshots=true`로 수동 실행하면 된다. 빌드는 다시 올리지 않는다.
+- 빌드 없이 수동 실행하면 태그가 안 생긴다. 빌드가 이미 올라가 있다면 `v<버전>-<빌드>` 태그를 직접 찍는다.
+- 캡처는 macOS Stage Manager 때문에 가끔 실패한다(썸네일 크기로 찍힘). 다시 돌리면 된다.
+- 데모 데이터로 스크린샷을 찍을 때는 실제 화면과 **같은 현지화 키**를 써야 한다. 다르면 영어 스크린샷에
+  원문 언어가 섞인다.
+- 메뉴 이름을 바꾼 릴리스라면 설명문(`description.txt`)에 옛 이름이 남았는지 확인한다.
+
 ## 라이선스
 
 MIT

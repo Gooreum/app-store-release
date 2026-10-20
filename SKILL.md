@@ -139,6 +139,11 @@ git log --no-merges --format='%h %s' "$BASE"..HEAD
 버전 커밋은 뺀다. `fastlane/metadata/<언어>/release_notes.txt`의 이전 문체를 따라 **있는 언어 전부**
 쓴다. 파일에는 아직 쓰지 않는다. 앱에 보이는 변화가 없으면 지금 문구를 그대로 초안으로 둔다.
 
+**이름이 바뀌었는지도 본다.** 이번 변경에서 화면의 메뉴·기능 이름을 바꿨거나 새 기능이 생겼다면,
+`fastlane/metadata/<언어>/description.txt`·`keywords.txt`·`subtitle.txt`에 옛 이름이 남았는지, 새 기능이
+빠졌는지 `grep`으로 확인한다. 남아 있으면 앱 정보 탭의 설명에 "설명에 옛 이름 'X'가 남아 있어요"라고 적는다.
+스크린샷과 설명의 이름이 앱과 다르면 심사에서 "설명과 앱이 다르다"는 지적을 받는다.
+
 ### 1. 한 번에 묻기 — AskUserQuestion 1회, 탭 4개
 
 | header | 질문 | 보기 (최대 4개) |
@@ -190,6 +195,10 @@ bash scripts/app-store/version.sh set <새 버전> <새 빌드>
 **스크린샷** — 설정의 `screenshots`를 쓴다. `{scenes}`는 고른 장면 id를 공백으로 이은 것이다.
 
 1. 캡처: `screenshots.capture` 명령. 앱 창이 잠깐씩 앞으로 뜬다고 먼저 말한다.
+   Stage Manager 때문에 `could not create image from window`나 썸네일 크기(수백 px)로 실패할 수 있다.
+   실패하면 캡처 폴더를 지우고 **최대 3번까지** 다시 돌린다. 그래도 안 되면 사용자에게 보고한다.
+   영어 캡처에 한국어(원문 언어)가 남아 있으면 데모 데이터의 문구가 실제 앱 문구와 다른 것이다 —
+   데모가 `String(localized:)`로 실제 화면과 **같은 키**를 쓰는지 고친 뒤 다시 찍는다.
 2. 합성: `screenshots.compose` 명령. `composer`가 `codex`이고 `codex` CLI가 있으면 Codex에 맡긴다
    (`codex exec -s workspace-write`). 프롬프트에는 장면 목록, compose 명령, "아트디렉션·카피를 바꾸지
    말 것", "결과를 한 장씩 열어 글자 깨짐·잘림·크기·언어 섞임을 검수할 것", "소스·메타데이터는
@@ -211,7 +220,14 @@ gh run watch "$RUN" --exit-status
   한다**고 보고한다. 빌드는 업로드 뒤 처리에 몇 분~수십 분 걸린다.
 - 실패: `gh run view "$RUN" --log-failed | tail -60`을 읽고 원인을 요약한다. 고칠 수 있으면 고치고,
   같은 빌드 번호로 다시 올리지 않는지 확인한 뒤 `gh workflow run app-store.yml -f build=true`처럼 수동 실행한다.
-- 빌드 없이 앱 정보만 바꾼 커밋이면 태그는 생기지 않는다.
+- 빌드 없이 앱 정보만 바꾼 커밋이면 태그는 생기지 않는다. `workflow_dispatch`로 `build=false`로 다시 돌린 뒤에도
+  마찬가지라, 빌드가 이미 올라가 있으면 태그를 직접 찍어 올린다: `git tag v<버전>-<빌드> <릴리스 커밋> && git push origin v<버전>-<빌드>`.
+  태그가 없으면 다음 릴리스의 `BASE`(마지막 릴리스 기준점)가 어긋난다.
+- **스크린샷 교체가 `Failed to delete screenshot ... APP_DESKTOP` / `Failed verification of all screenshots
+  deleted`로 실패하면**: 이미 올라가 있는 스크린샷을 API로 지우지 못하는 것이다(빌드 업로드는 이미 끝났다).
+  같은 명령을 다시 돌리지 말고 사용자에게 **App Store Connect 웹에서 해당 버전의 기존 스크린샷을 지워 달라**고
+  부탁한다. 지운 뒤 `gh workflow run app-store.yml -f metadata=true -f screenshots=true`로 앱 정보·스크린샷만
+  다시 올린다(빌드는 다시 올리지 않는다).
 
 ## 참고
 
