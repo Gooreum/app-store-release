@@ -174,8 +174,10 @@ git log --no-merges --format='%h %s' "$BASE"..HEAD
 
 ### 3. 파일 반영
 
-**버전** — 빌드 번호는 묻지 않는다. 버전을 올리면 빌드는 1부터 다시 시작하고, 같은 버전을 다시
-올릴 때만 현재 값 + 1이다(release-diff.sh는 버전·빌드 쌍으로 비교한다). `그대로`면 버전 파일을 건드리지 않는다.
+**버전** — 새 빌드를 올리면 빌드 번호는 늘 현재 값 + 1이다. 묻지 않는다. 버전을 올려도 1로 되돌리지
+않는다. App Store Connect는 **버전이 달라도** 이전 업로드보다 큰 번호만 받는다(macOS 앱에서 두 번 거부됐다:
+`CFBundleVersion [1] ... must contain a higher version than ... previously uploaded version [8]`, 오류 90061).
+`그대로`면 버전 파일을 건드리지 않는다.
 
 ```bash
 bash scripts/app-store/version.sh set <새 버전> <새 빌드>
