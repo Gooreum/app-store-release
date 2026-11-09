@@ -4,6 +4,12 @@
 #
 #   bash scripts/app-store/version.sh get [커밋]       → "1.0.3 9"
 #   bash scripts/app-store/version.sh set 1.0.4 10
+#   bash scripts/app-store/version.sh next 1.0.4        → 새 빌드 번호 (version.build_scheme을 따른다)
+#
+# version.build_scheme (선택, 기본 plus-one)
+#   plus-one         현재 빌드 + 1. 버전을 올려도 1로 되돌리지 않는다.
+#   version-encoded  주×10000 + 부×1000 + 패치×100 + 회차(01~99). 같은 버전을 다시 올리면 회차 +1, 버전이 바뀌면 01.
+#                    예) 1.0.6 첫 빌드 = 10601. 저장소가 버전에서 번호를 정하는 앱(예: Sweep)용.
 #
 # version.kind
 #   plist     Info.plist에 숫자가 직접 적혀 있다 (CFBundleShortVersionString / CFBundleVersion)
@@ -74,6 +80,24 @@ open(path, "w").write(text)
 PY
     bash "$0" get
     ;;
+  next)
+    NEW="${2:?새 버전}"
+    read -r CUR_V CUR_B < <(bash "$0" get)
+    python3 - "$(cfg version.build_scheme)" "$NEW" "$CUR_V" "$CUR_B" <<'PY'
+import sys
+scheme, new, cur_v, cur_b = sys.argv[1:]
+if scheme in ("", "plus-one"):
+    print(int(cur_b) + 1)
+elif scheme == "version-encoded":
+    major, minor, patch = (list(map(int, new.split("."))) + [0, 0])[:3]
+    base = major * 10000 + minor * 1000 + patch * 100
+    seq = int(cur_b) - base + 1 if new == cur_v and base < int(cur_b) <= base + 99 else 1
+    if not 1 <= seq <= 99: sys.exit("회차가 01~99를 벗어난다")
+    print(base + seq)
+else:
+    sys.exit(f"알 수 없는 version.build_scheme: {scheme}")
+PY
+    ;;
   *)
-    echo "사용법: version.sh get [커밋] | set <버전> <빌드>" >&2; exit 1 ;;
+    echo "사용법: version.sh get [커밋] | set <버전> <빌드> | next <새 버전>" >&2; exit 1 ;;
 esac

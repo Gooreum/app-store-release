@@ -192,8 +192,10 @@ git log --no-merges --format='%h %s' "$BASE"..HEAD
 
 ### 3. 파일 반영
 
-**버전** — 새 빌드를 올리면 빌드 번호는 늘 현재 값 + 1이다. 묻지 않는다. 버전을 올려도 1로 되돌리지
-않는다. App Store Connect는 **버전이 달라도** 이전 업로드보다 큰 번호만 받는다(macOS 앱에서 두 번 거부됐다:
+**버전** — 빌드 번호는 묻지 않고 `bash scripts/app-store/version.sh next <새 버전>`이 정한다. 설정에
+`version.build_scheme`이 없거나 `plus-one`이면 늘 현재 값 + 1이다(버전을 올려도 1로 되돌리지 않는다).
+`version-encoded`면 주×10000 + 부×1000 + 패치×100 + 회차(01~99)다(예: 1.0.6의 첫 빌드 10601). 이 규칙은
+저장소 스크립트가 같은 식으로 검사하는 앱용이다. App Store Connect는 **버전이 달라도** 이전 업로드보다 큰 번호만 받는다(macOS 앱에서 두 번 거부됐다:
 `CFBundleVersion [1] ... must contain a higher version than ... previously uploaded version [8]`, 오류 90061).
 `그대로`면 버전 파일을 건드리지 않는다.
 
