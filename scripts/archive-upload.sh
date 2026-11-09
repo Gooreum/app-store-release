@@ -6,7 +6,8 @@
 #   bash scripts/app-store/archive-upload.sh
 #
 # 로컬에서는 Xcode에 로그인된 계정으로 서명한다. CI처럼 계정이 없으면 API 키를 준다 —
-# 그 키로 배포 인증서·프로파일을 받는다(클라우드 서명, 키 권한이 Admin이어야 한다):
+# 그 키로 프로파일을 받는다(키 권한이 Admin이어야 한다). 인증서는 CI가 이미 있는 것을 키체인에 넣어 둔다
+# (워크플로 "서명 인증서" 단계). 넣어 두지 않으면 Xcode가 실행마다 개발 인증서를 새로 만든다:
 #
 #   ASC_KEY_ID=… ASC_ISSUER_ID=… ASC_KEY_PATH=…/AuthKey_….p8 bash scripts/app-store/archive-upload.sh
 #

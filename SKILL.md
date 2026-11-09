@@ -68,7 +68,7 @@ grep -h "MARKETING_VERSION\|PRODUCT_BUNDLE_IDENTIFIER\|DEVELOPMENT_TEAM" */proje
 
 ```bash
 mkdir -p scripts/app-store fastlane .github/workflows
-cp "$SKILL_DIR"/scripts/{lib,version,release-diff,archive-upload}.sh scripts/app-store/
+cp "$SKILL_DIR"/scripts/{lib,version,release-diff,archive-upload,kakao-send,kakao-notify}.sh scripts/app-store/
 cp "$SKILL_DIR"/templates/fastlane/Fastfile fastlane/Fastfile
 sed -e "s|__BRANCH__|$BRANCH|g" -e "s|__VERSION_FILE__|$VERSION_FILE|g" -e "s|__RUNNER__|$RUNNER|g" \
   "$SKILL_DIR"/templates/workflows/app-store.yml > .github/workflows/app-store.yml
@@ -93,7 +93,22 @@ Issuer ID는 같은 화면 위쪽에 있다. 사용자에게 아래를 `!`로 �
 ! base64 -i ~/.appstoreconnect/private_keys/AuthKey_<키 ID>.p8 | gh secret set ASC_KEY_P8
 ```
 
-`gh secret list`로 셋이 들어갔는지 본다.
+**서명 인증서도 이미 있는 것을 넣는다 — 빼먹으면 안 된다.** CI 러너는 매번 새 Mac이라 키체인이 비어 있다.
+인증서를 주지 않으면 Xcode가 API 키로 개발 인증서를 실행마다 새로 만들어 계정 한도에 걸린다
+(`Choose a certificate to revoke` — IntervalTimer에서 "Created via API" 개발 인증서 11개가 쌓여 실패했다).
+서명을 끄거나(`CODE_SIGNING_ALLOWED=NO`, HealthKit 같은 entitlements가 빠진다) ad-hoc(`-`, iOS SDK가 막는다)으로
+피하지 않는다. 로컬 키체인의 그 팀 **Apple Development**·**Apple Distribution** 인증서를 키와 함께 `.p12`로
+하나씩 내보낸다(`security export -t identities` 뒤 openssl로 팀 OU·키가 맞는 것만 골라 다시 묶는다).
+파일은 `~/.config/<번들 ID>/ci-signing/`(700)에 두고 저장소에 넣지 않는다. 워크플로의 "서명 인증서" 단계가 러너
+키체인에 넣는다.
+
+```
+! base64 -i ~/.config/<번들 ID>/ci-signing/dev.p12 | gh secret set CERT_DEV_P12
+! base64 -i ~/.config/<번들 ID>/ci-signing/dist.p12 | gh secret set CERT_DIST_P12
+! gh secret set CERT_P12_PASSWORD < ~/.config/<번들 ID>/ci-signing/p12-password.txt
+```
+
+`gh secret list`로 여섯 개가 들어갔는지 본다.
 
 ### 5. 현재 앱 정보 내려받기
 
@@ -223,6 +238,11 @@ gh run watch "$RUN" --exit-status
 
 - 성공: 무엇이 올라갔는지(빌드/앱 정보/스크린샷), 태그, 그리고 **심사 제출은 사람이 App Store Connect에서
   한다**고 보고한다. 빌드는 업로드 뒤 처리에 몇 분~수십 분 걸린다.
+- 성공했고 설정에 `notify.kakao_room`이 있으면 `bash scripts/app-store/kakao-notify.sh`로 그 카카오톡 방에 알린다.
+  영어 먼저, 그다음 한국어를 **메시지 하나**에 담는다(업데이트 내용은 `fastlane/metadata/<언어>/release_notes.txt`).
+  카카오톡을 몇 초 앞으로 가져왔다가 원래 앱으로 되돌린다. 실패해도 배포 결과는 그대로이고 경고만 남는다.
+  방에 다른 사람이 있으니 첫 실제 전송과 문구는 사용자에게 확인받는다. 이미 보낸 알림을 고칠 때는 새로 보내지 말고
+  카카오톡에서 그 메시지를 수정한다.
 - 실패: `gh run view "$RUN" --log-failed | tail -60`을 읽고 원인을 요약한다. 고칠 수 있으면 고치고,
   같은 빌드 번호로 다시 올리지 않는지 확인한 뒤 `gh workflow run app-store.yml -f build=true`처럼 수동 실행한다.
 - 빌드 없이 앱 정보만 바꾼 커밋이면 태그는 생기지 않는다. `workflow_dispatch`로 `build=false`로 다시 돌린 뒤에도
