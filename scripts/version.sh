@@ -9,6 +9,7 @@
 #   plist     Info.plist에 숫자가 직접 적혀 있다 (CFBundleShortVersionString / CFBundleVersion)
 #   build-setting  project.pbxproj나 .xcconfig의 MARKETING_VERSION / CURRENT_PROJECT_VERSION
 #                  (Info.plist가 $(MARKETING_VERSION)을 가리키는 요즘 Xcode 기본 구성)
+#   swift     Tuist Project.swift처럼 Swift 딕셔너리에 "MARKETING_VERSION": "1.0.1"로 적혀 있다
 #
 # 쓰기는 정규식으로 그 줄만 바꾼다. PlistBuddy·plutil은 파일을 통째로 다시 써서
 # 주석과 키 순서를 망친다.
@@ -29,6 +30,14 @@ kind, text = sys.argv[1], sys.stdin.read()
 if kind == "plist":
     pick = lambda k: re.search(r"<key>%s</key>\s*<string>([^<]*)</string>" % k, text)
     v, b = pick("CFBundleShortVersionString"), pick("CFBundleVersion")
+elif kind == "swift":
+    # 타깃마다 한 줄씩 있다. 값이 서로 다르면 업로드 뒤에야 App Store Connect가 거절하니 여기서 멈춘다.
+    def pick(k):
+        found = re.findall(r"\"%s\"\s*:\s*\"([^\"]*)\"" % k, text)
+        if len(set(found)) > 1:
+            sys.exit(f"{k} 값이 타깃마다 다르다: {sorted(set(found))}")
+        return re.search(r"\"%s\"\s*:\s*\"([^\"]*)\"" % k, text)
+    v, b = pick("MARKETING_VERSION"), pick("CURRENT_PROJECT_VERSION")
 else:
     pick = lambda k: re.search(r"\b%s\s*=\s*\"?([^;\"\n]+?)\"?\s*(;|$)" % k, text, re.M)
     v, b = pick("MARKETING_VERSION"), pick("CURRENT_PROJECT_VERSION")
@@ -50,6 +59,11 @@ if kind == "plist":
     pairs = [("CFBundleShortVersionString", version), ("CFBundleVersion", build)]
     for key, value in pairs:
         text, n = re.subn(r"(<key>%s</key>\s*<string>)[^<]*(</string>)" % key, r"\g<1>%s\g<2>" % value, text)
+        if n == 0: sys.exit(f"{key}를 찾지 못했다: {path}")
+elif kind == "swift":
+    # 타깃마다 한 줄씩 있다(앱·확장). 모두 같은 값으로 맞춘다.
+    for key, value in [("MARKETING_VERSION", version), ("CURRENT_PROJECT_VERSION", build)]:
+        text, n = re.subn(r"(\"%s\"\s*:\s*\")[^\"]*(\")" % key, r"\g<1>%s\g<2>" % value, text)
         if n == 0: sys.exit(f"{key}를 찾지 못했다: {path}")
 else:
     # 타깃·구성마다 한 줄씩 있다. 모두 같은 값으로 맞춘다.
