@@ -155,7 +155,7 @@ def watch(rid, expect_sha=""):
         if a.get("executionProgress") == "COMPLETE": break
         if time.time() - start > 3 * 3600: sys.exit("3시간이 지나도 안 끝났다 — App Store Connect에서 확인한다")
         time.sleep(30)
-    print(f"결과 {a.get('completionStatus')} · 커밋 {got[:7]} · {a.get('startedDate','')[:16]} → {a.get('finishedDate','')[:16]}")
+    print(f"결과 {a.get('completionStatus')} · 커밋 {got[:7]} · {(a.get('startedDate') or '')[:16]} → {(a.get('finishedDate') or '')[:16]}")
     for act in api("GET", f"/v1/ciBuildRuns/{rid}/actions")["data"]:
         aa = act["attributes"]; print(f"  액션 {aa.get('name')}: {aa.get('completionStatus')}")
         ic = aa.get("issueCounts") or {}
@@ -179,5 +179,5 @@ def dump_logs(action_id):
         print("".join(open(p, errors="replace").readlines()[-40:]))
     print(f"  전체 로그: {out}")
 
-{"setup": setup, "run": run, "watch": lambda: watch(args[0])}[cmd]()
+{"setup": setup, "run": run, "watch": lambda: watch(args[0] if args else sys.exit("실행 ID가 필요하다"))}[cmd]()
 PY

@@ -7,7 +7,8 @@
 #   → remaining=unlimited                         공개 저장소 (호스티드 러너 무료)
 #   → remaining=unknown reason=…                  알 수 없음 — 막혔는지는 실행 결과로 판단한다
 #
-# 개인 계정 저장소만 센다. gh 토큰에 user 스코프가 있어야 한다(gh auth refresh -h github.com -s user).
+# 먼저 최근 실행이 결제·한도로 막혔는지 본다(개인·조직 모두). 그다음 결제 API로 남은 분을 센다 —
+# 개인은 user 스코프, 조직은 조직 결제 보기 권한이 필요하다. ACTIONS_WORKFLOW로 볼 워크플로를 고를 수 있다.
 # 포함 분은 ACTIONS_INCLUDED_MINUTES(기본 2000 — Free 플랜). 무료 할인을 넘어 과금이 시작됐으면
 # (결제 수단이 없으면 그때부터 잡이 시작되지 않는다) remaining=0으로 본다.
 set -euo pipefail
@@ -19,9 +20,33 @@ info=$(gh repo view --json owner,visibility -q '"\(.owner.login) \(.visibility)"
 read -r OWNER VIS <<<"$info"
 [ "$VIS" = PUBLIC ] && { echo "remaining=unlimited"; exit 0; }
 
+# 최근 실행이 결제·한도 문제로 시작조차 못 했으면 그걸로 바로 판정한다(조직 저장소도 된다).
+WF=${ACTIONS_WORKFLOW:-}
+blocked=$(python3 - "$WF" <<'PY' 2>/dev/null || true
+import json, subprocess, sys
+wf = sys.argv[1]
+q = ["gh", "run", "list", "--limit", "5", "--json", "databaseId,conclusion"] + (["--workflow", wf] if wf else [])
+runs = json.loads(subprocess.run(q, capture_output=True, text=True, check=True).stdout)
+for r in runs:
+    if r.get("conclusion") != "failure": continue
+    out = subprocess.run(["gh", "run", "view", str(r["databaseId"])], capture_output=True, text=True).stdout
+    if "payments have failed" in out or "spending limit" in out:
+        print("billing"); break
+    break
+PY
+)
+[ "$blocked" = billing ] && { echo "remaining=0 reason=billing(최근 실행이 결제·한도로 시작되지 않음)"; exit 0; }
+
 Y=$(date -u +%Y); M=$(date -u +%-m)
-json=$(gh api "/users/$OWNER/settings/billing/usage/summary?year=$Y&month=$M" 2>/dev/null) \
-  || { echo "remaining=unknown reason=billing-api(user 스코프·개인 계정 필요)"; exit 0; }
+TYPE=$(gh api "/users/$OWNER" -q .type 2>/dev/null || echo User)
+if [ "$TYPE" = Organization ]; then
+  # 조직은 조직 결제 API를 쓴다(gh 토큰에 admin:org 또는 조직 결제 보기 권한이 필요하다)
+  json=$(gh api "/organizations/$OWNER/settings/billing/usage/summary?year=$Y&month=$M" 2>/dev/null) \
+    || { echo "remaining=unknown reason=billing-api(조직 결제 보기 권한 필요) — 막혔는지는 실행 결과로 판단한다"; exit 0; }
+else
+  json=$(gh api "/users/$OWNER/settings/billing/usage/summary?year=$Y&month=$M" 2>/dev/null) \
+    || { echo "remaining=unknown reason=billing-api(user 스코프 필요)"; exit 0; }
+fi
 
 BILLING_JSON="$json" python3 - "$INCLUDED" <<'PY'
 import json, math, os, sys
