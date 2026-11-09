@@ -1,0 +1,11 @@
+{
+  "app_identifier": "com.example.app",
+  "platform": "IOS",
+  "container": "App.xcodeproj",
+  "scheme": "App",
+  "xcode": "Xcode 26.6",
+  "workflow": "Release fallback",
+  "asc_key_path": "~/.appstoreconnect/private_keys/AuthKey_ABCDE12345.p8",
+  "asc_key_id": "ABCDE12345",
+  "asc_issuer_id": "00000000-0000-0000-0000-000000000000"
+}

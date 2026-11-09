@@ -20,11 +20,20 @@
   },
   "screenshots": {
     "scenes": [
-      { "id": "home", "label": "홈" },
-      { "id": "detail", "label": "상세" }
+      {
+        "id": "home",
+        "label": "홈"
+      },
+      {
+        "id": "detail",
+        "label": "상세"
+      }
     ],
     "capture": "",
     "compose": "",
     "composer": "codex"
+  },
+  "notify": {
+    "kakao_room": ""
   }
 }

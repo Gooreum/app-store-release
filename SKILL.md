@@ -1,6 +1,6 @@
 ---
 name: app-store-release
-description: iOS·macOS 앱을 App Store Connect에 배포한다. 메인 브랜치에 PR을 머지한 직후, 또는 사용자가 "배포", "릴리스", "스토어에 올려", "앱스토어 자동 배포 설정"이라고 할 때 쓴다. 처음이면 프로젝트에 fastlane·GitHub Actions 배포 파이프라인을 깔고, 그 뒤로는 배포 여부·버전·업데이트 내용·앱 정보·스크린샷을 탭 하나로 한 번에 물어 릴리스 커밋을 만든다. 업로드는 GitHub Actions가 하고 심사 제출은 사람이 한다.
+description: iOS·macOS 앱을 App Store Connect에 배포한다. 메인 브랜치에 PR을 머지한 직후, 또는 사용자가 "배포", "릴리스", "스토어에 올려", "앱스토어 자동 배포 설정"이라고 할 때 쓴다. 처음이면 프로젝트에 fastlane·GitHub Actions 배포 파이프라인을 깔고, 그 뒤로는 배포 여부·버전·업데이트 내용·앱 정보·스크린샷을 탭 하나로 한 번에 물어 릴리스 커밋을 만든다. 업로드는 GitHub Actions가 하고(무료 분이 막히면 Xcode Cloud로 대체) 심사 제출은 사람이 한다.
 ---
 
 # app-store-release
@@ -8,6 +8,8 @@ description: iOS·macOS 앱을 App Store Connect에 배포한다. 메인 브랜�
 사용자에게 보이는 말은 사용자의 언어로 쓴다.
 
 두 가지 모드가 있다. 저장소 루트에 `.app-store-release.json`이 없으면 **설정**, 있으면 **릴리스**.
+단, `.app-store-release.json` 없이 `.xcode-cloud.json`만 있는 저장소(자체 배포 파이프라인이 있는 앱, 예: EnglishStudy)는
+설정 모드로 가지 않는다 — 아래 "대체 경로"와 그 저장소 문서(`docs/` 또는 `CLAUDE.md`)의 배포 절차만 따른다.
 
 `SKILL_DIR`은 이 파일이 있는 폴더다(보통 `~/.claude/skills/app-store-release`).
 
@@ -66,7 +68,7 @@ grep -h "MARKETING_VERSION\|PRODUCT_BUNDLE_IDENTIFIER\|DEVELOPMENT_TEAM" */proje
 
 ```bash
 mkdir -p scripts/app-store fastlane .github/workflows
-cp "$SKILL_DIR"/scripts/{lib,version,release-diff,archive-upload}.sh scripts/app-store/
+cp "$SKILL_DIR"/scripts/{lib,version,release-diff,archive-upload,kakao-send,kakao-notify}.sh scripts/app-store/
 cp "$SKILL_DIR"/templates/fastlane/Fastfile fastlane/Fastfile
 sed -e "s|__BRANCH__|$BRANCH|g" -e "s|__VERSION_FILE__|$VERSION_FILE|g" -e "s|__RUNNER__|$RUNNER|g" \
   "$SKILL_DIR"/templates/workflows/app-store.yml > .github/workflows/app-store.yml
@@ -91,7 +93,22 @@ Issuer ID는 같은 화면 위쪽에 있다. 사용자에게 아래를 `!`로 �
 ! base64 -i ~/.appstoreconnect/private_keys/AuthKey_<키 ID>.p8 | gh secret set ASC_KEY_P8
 ```
 
-`gh secret list`로 셋이 들어갔는지 본다.
+**서명 인증서도 이미 있는 것을 넣는다 — 빼먹으면 안 된다.** CI 러너는 매번 새 Mac이라 키체인이 비어 있다.
+인증서를 주지 않으면 Xcode가 API 키로 개발 인증서를 실행마다 새로 만들어 계정 한도에 걸린다
+(`Choose a certificate to revoke` — IntervalTimer에서 "Created via API" 개발 인증서 11개가 쌓여 실패했다).
+서명을 끄거나(`CODE_SIGNING_ALLOWED=NO`, HealthKit 같은 entitlements가 빠진다) ad-hoc(`-`, iOS SDK가 막는다)으로
+피하지 않는다. 로컬 키체인의 그 팀 **Apple Development**·**Apple Distribution** 인증서를 키와 함께 `.p12`로
+하나씩 내보낸다(`security export -t identities` 뒤 openssl로 팀 OU·키가 맞는 것만 골라 다시 묶는다).
+파일은 `~/.config/<번들 ID>/ci-signing/`(700)에 두고 저장소에 넣지 않는다. 워크플로의 "서명 인증서" 단계가 러너
+키체인에 넣는다.
+
+```
+! base64 -i ~/.config/<번들 ID>/ci-signing/dev.p12 | gh secret set CERT_DEV_P12
+! base64 -i ~/.config/<번들 ID>/ci-signing/dist.p12 | gh secret set CERT_DIST_P12
+! gh secret set CERT_P12_PASSWORD < ~/.config/<번들 ID>/ci-signing/p12-password.txt
+```
+
+`gh secret list`로 여섯 개가 들어갔는지 본다.
 
 ### 5. 현재 앱 정보 내려받기
 
@@ -129,6 +146,7 @@ sleep 5; gh run watch "$(gh run list --workflow app-store.yml --limit 1 --json d
 git switch "$BRANCH" && git pull --ff-only
 git status --short -- "$(cfg version.file)" fastlane scripts/app-store .github   # 비어 있어야 한다
 gh secret list   # ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8
+bash scripts/app-store/actions-quota.sh   # remaining=0이면 4단계 대신 "대체 경로"로 간다
 bash scripts/app-store/version.sh get            # → "X.Y.Z B"
 BASE=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null \
        || git log -1 --format=%H -G "CFBundleShortVersionString|MARKETING_VERSION" -- "$(cfg version.file)")
@@ -220,6 +238,11 @@ gh run watch "$RUN" --exit-status
 
 - 성공: 무엇이 올라갔는지(빌드/앱 정보/스크린샷), 태그, 그리고 **심사 제출은 사람이 App Store Connect에서
   한다**고 보고한다. 빌드는 업로드 뒤 처리에 몇 분~수십 분 걸린다.
+- 성공했고 설정에 `notify.kakao_room`이 있으면 `bash scripts/app-store/kakao-notify.sh`로 그 카카오톡 방에 알린다.
+  영어 먼저, 그다음 한국어를 **메시지 하나**에 담는다(업데이트 내용은 `fastlane/metadata/<언어>/release_notes.txt`).
+  카카오톡을 몇 초 앞으로 가져왔다가 원래 앱으로 되돌린다. 실패해도 배포 결과는 그대로이고 경고만 남는다.
+  방에 다른 사람이 있으니 첫 실제 전송과 문구는 사용자에게 확인받는다. 이미 보낸 알림을 고칠 때는 새로 보내지 말고
+  카카오톡에서 그 메시지를 수정한다.
 - 실패: `gh run view "$RUN" --log-failed | tail -60`을 읽고 원인을 요약한다. 고칠 수 있으면 고치고,
   같은 빌드 번호로 다시 올리지 않는지 확인한 뒤 `gh workflow run app-store.yml -f build=true`처럼 수동 실행한다.
 - 빌드 없이 앱 정보만 바꾼 커밋이면 태그는 생기지 않는다. `workflow_dispatch`로 `build=false`로 다시 돌린 뒤에도
@@ -233,6 +256,47 @@ gh run watch "$RUN" --exit-status
   `status`로 읽어 제출된 버전이 있으면 첫 질문 탭에 "심사 중인 X를 철회하고 올릴까요? (심사 순서를 잃어요)"를
   보기로 둔다. 심사 진행 중(`IN_REVIEW`)이면 철회할 수 없으니 끝나기를 기다린다.
   구현 예: https://github.com/Gooreum/sweep 의 `fastlane/Fastfile`.
+
+## 대체 경로 — GitHub Actions가 막혔을 때 (Xcode Cloud)
+
+Free 플랜 비공개 저장소는 Actions가 월 2,000분이고 macOS는 10배로 센다. 다 쓰면 다음 달 1일까지 잡이 시작조차
+안 된다. 이때 **내 Mac에서 빌드하지 않고** Xcode Cloud(개발자 계정에 월 25시간 포함)로 아카이브한다.
+판단: 릴리스 0단계의 `actions-quota.sh`가 `remaining=0`, 또는 푸시 뒤 실행이 결제·한도 문제로 시작되지 않음.
+
+**원칙 — Xcode Cloud는 아카이브만 한다.** 워크플로에 TestFlight/App Store 배포를 켜면 App Store Connect가
+Xcode Cloud 자체 빌드 번호를 쓴다(Apple 문서 "Setting the next build number for Xcode Cloud builds").
+그러면 저장소의 번호 규칙·태그와 어긋나고, Mac 앱은 번호가 계속 커져야 해서 거부된다. 그래서 배포는 끄고
+`ci_scripts/ci_post_xcodebuild.sh`가 API 키로 직접 내보내 올린다. 올리기 전에 아카이브 번호가 소스와 같은지 본다.
+
+### 저장소에 까는 것
+
+- `.xcode-cloud.json` — `templates/xcode-cloud.example.json` 모양(앱 ID, `IOS`|`MACOS`, 컨테이너, scheme,
+  Xcode 이름, API 키 경로·ID). Xcode 이름은 `ciXcodeVersions`에 있는 것만 된다(예: `Xcode 26.6`) —
+  로컬 버전이 없으면 가장 가까운 것을 사용자에게 묻는다.
+- `scripts/app-store/xcode-cloud.sh`, `scripts/app-store/actions-quota.sh` (이 스킬의 `scripts/`에서 복사)
+- `ci_scripts/ci_post_clone.sh` — 시크릿 주입, 생성형 프로젝트면 생성(Tuist: `tuist generate --no-open`),
+  빌드 번호를 CI에서 정하는 저장소면 여기서 정해 프로젝트에 쓴다.
+- `ci_scripts/ci_post_xcodebuild.sh` — `templates/ci_scripts/ci_post_xcodebuild.sh`. `CI_WORKFLOW`가
+  `Release fallback`이고 아카이브가 성공했을 때만 돈다. **main이 아닌 브랜치는 올리지 않고 내보내기까지만**(시험용).
+
+### 처음 한 번 — 사람이 하는 것 (API로 안 된다)
+
+1. Xcode에서 프로젝트를 열고 Integrate → Create Workflow → 앱 선택 → GitHub 저장소 접근 허용. 기본 워크플로는
+   저장만 하고 빌드는 시작하지 않는다(시작됐으면 취소).
+2. `bash scripts/app-store/xcode-cloud.sh setup` — 대체 워크플로 `Release fallback`(수동 시작만, 아카이브만)을
+   만들고, 브랜치 변경마다 도는 기본 워크플로는 끈다(25시간을 갉아먹는다).
+3. App Store Connect → 앱 → Xcode Cloud → Manage Workflows → `Release fallback` → Environment에 Secret으로
+   `ASC_KEY_ID`·`ASC_ISSUER_ID`·`ASC_KEY_P8`(.p8 base64 — GitHub 시크릿과 같은 값)과 앱이 쓰는 시크릿을 넣는다.
+   명령으로 값을 보여 주지 않는다. 사용자에게 어디에 무엇을 넣는지만 말한다.
+4. 시험: 작업 브랜치를 푸시하고 `bash scripts/app-store/xcode-cloud.sh run <브랜치>` — 올리지 않고 서명까지만 본다.
+
+### 릴리스
+
+1. 릴리스 커밋을 평소처럼 main에 푸시한다(Actions가 막혀 있으면 워크플로는 시작되지 않는다).
+2. `bash scripts/app-store/xcode-cloud.sh run main` — 끝날 때까지 지켜보고, 실패하면 액션 오류와 `ci_*` 로그
+   끝부분을 보여 준다(전체 `build/xcode-cloud/`). Xcode Cloud는 GitHub의 main 끝 커밋을 빌드한다.
+3. 앱 정보·스크린샷은 이 Mac에서 fastlane으로 올린다(API 호출만, 빌드 없음).
+4. 업로드가 성공했으면 태그를 직접 찍는다(워크플로가 하던 일): `git tag v<버전>-<빌드> && git push origin v<버전>-<빌드>`.
 
 ## 참고
 
