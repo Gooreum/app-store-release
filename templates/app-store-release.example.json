@@ -32,8 +32,5 @@
     "capture": "",
     "compose": "",
     "composer": "codex"
-  },
-  "notify": {
-    "kakao_room": ""
   }
 }

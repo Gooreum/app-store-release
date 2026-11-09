@@ -68,7 +68,7 @@ grep -h "MARKETING_VERSION\|PRODUCT_BUNDLE_IDENTIFIER\|DEVELOPMENT_TEAM" */proje
 
 ```bash
 mkdir -p scripts/app-store fastlane .github/workflows
-cp "$SKILL_DIR"/scripts/{lib,version,release-diff,archive-upload,kakao-send,kakao-notify}.sh scripts/app-store/
+cp "$SKILL_DIR"/scripts/{lib,version,release-diff,archive-upload}.sh scripts/app-store/
 cp "$SKILL_DIR"/templates/fastlane/Fastfile fastlane/Fastfile
 sed -e "s|__BRANCH__|$BRANCH|g" -e "s|__VERSION_FILE__|$VERSION_FILE|g" -e "s|__RUNNER__|$RUNNER|g" \
   "$SKILL_DIR"/templates/workflows/app-store.yml > .github/workflows/app-store.yml
@@ -238,11 +238,6 @@ gh run watch "$RUN" --exit-status
 
 - 성공: 무엇이 올라갔는지(빌드/앱 정보/스크린샷), 태그, 그리고 **심사 제출은 사람이 App Store Connect에서
   한다**고 보고한다. 빌드는 업로드 뒤 처리에 몇 분~수십 분 걸린다.
-- 성공했고 설정에 `notify.kakao_room`이 있으면 `bash scripts/app-store/kakao-notify.sh`로 그 카카오톡 방에 알린다.
-  영어 먼저, 그다음 한국어를 **메시지 하나**에 담는다(업데이트 내용은 `fastlane/metadata/<언어>/release_notes.txt`).
-  카카오톡을 몇 초 앞으로 가져왔다가 원래 앱으로 되돌린다. 실패해도 배포 결과는 그대로이고 경고만 남는다.
-  방에 다른 사람이 있으니 첫 실제 전송과 문구는 사용자에게 확인받는다. 이미 보낸 알림을 고칠 때는 새로 보내지 말고
-  카카오톡에서 그 메시지를 수정한다.
 - 실패: `gh run view "$RUN" --log-failed | tail -60`을 읽고 원인을 요약한다. 고칠 수 있으면 고치고,
   같은 빌드 번호로 다시 올리지 않는지 확인한 뒤 `gh workflow run app-store.yml -f build=true`처럼 수동 실행한다.
 - 빌드 없이 앱 정보만 바꾼 커밋이면 태그는 생기지 않는다. `workflow_dispatch`로 `build=false`로 다시 돌린 뒤에도
